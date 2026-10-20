@@ -1,0 +1,22 @@
+{
+  "TCHOREO": {
+    "Settings": {
+      "enabled": {
+        "name": "Token animations",
+        "hint": "Turn on token movement animations for everyone. When off, tokens move as in plain Foundry."
+      },
+      "calm": {
+        "name": "Calm effects",
+        "hint": "Less dust and fewer sharp motions, no screen shake. Only for you."
+      },
+      "noShake": {
+        "name": "No screen shake or flashes",
+        "hint": "Turns off screen shake and flashes; other animations stay. Only for you."
+      },
+      "footprints": {
+        "name": "Footprints",
+        "hint": "Footprints on the ground while walking. Only for you."
+      }
+    }
+  }
+}

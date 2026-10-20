@@ -1,0 +1,3 @@
+node_modules/
+tools/foundry/out/
+tools/foundry/*.log

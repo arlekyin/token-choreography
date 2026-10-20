@@ -1,0 +1,48 @@
+{
+  "id": "token-choreography",
+  "title": "Token Choreography",
+  "description": "Combat and movement animations for dnd5e tokens: walking with weight and rhythm, flying, jumping and climbing, creature sizes. Анимации боя и движения токенов для dnd5e.",
+  "version": "0.1.0",
+  "authors": [
+    {
+      "name": "arlekyin"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "14"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "5.0.0",
+          "verified": "6.0.6"
+        }
+      }
+    ]
+  },
+  "esmodules": [
+    "scripts/main.mjs"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    },
+    {
+      "lang": "ru",
+      "name": "Русский",
+      "path": "lang/ru.json"
+    }
+  ],
+  "flags": {
+    "hotReload": {
+      "extensions": ["json"],
+      "paths": ["lang"]
+    }
+  }
+}
