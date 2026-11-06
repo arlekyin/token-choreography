@@ -16,6 +16,8 @@ export function choreographTokenClass(Base) {
   return class ChoreographedToken extends Base {
     /** @type {TokenVisual|undefined} */
     _choreo;
+    /** Когда (Date.now, мс) кончается последний ход с анимацией */
+    choreoMovedUntil = 0;
     /** @type {Motion|null} План хода на время обновления (Foundry зовёт animate синхронно) */
     _choreoPlan = null;
 
@@ -46,6 +48,7 @@ export function choreographTokenClass(Base) {
       if (!prefs.enabled || !canvas.ready || options.animate === false) return;
       const movement = options._movement?.[this.document.id];
       if (!movement?.passed?.waypoints?.length) return;
+      this.choreoMovedUntil = Date.now();
       const explicit = options.animation?.movementSpeed;
       if (explicit !== undefined && !(explicit < 1e6)) return; // заданная длительность 0 — мгновенно
       if (options.animation?.duration === 0) return;
@@ -57,6 +60,8 @@ export function choreographTokenClass(Base) {
       });
       if (!motion) return;
       this._choreoPlan = motion;
+      // Когда ход кончится (часы этого клиента): атака сразу после подхода — наскок
+      this.choreoMovedUntil = Date.now() + motion.logicalEnd * 1000;
       vis.startMotion(motion);
       director.wake(vis);
     }

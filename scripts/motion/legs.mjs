@@ -116,7 +116,7 @@ export class WalkLeg extends Leg {
   #step(vis, pos) {
     if (!Leg.seen(vis)) return;
     const z = this.z, R = 44 * this.u, e = Leg.elev(vis);
-    if (this.prints) fx.print(pos.x, pos.y, e, pos.dir, this.foot, z);
+    if (this.prints) fx.print(pos.x, pos.y, e, pos.dir, this.foot, z, vis);
     if (!this.dustOn) return;
     if (z >= 3) {
       // Огромные и громадные: тяжёлый шаг, земля дрожит

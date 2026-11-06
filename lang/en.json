@@ -16,7 +16,19 @@
       "footprints": {
         "name": "Footprints",
         "hint": "Footprints on the ground while walking. Only for you."
+      },
+      "gore": {
+        "name": "Blood",
+        "hint": "Spatter and pools from hits, blood on weapons, wounds on portraits, red screen edges when your hero is hurt. Only for you.",
+        "off": "Off",
+        "low": "A little",
+        "full": "Full"
       }
+    },
+    "Hud": {
+      "draw": "Draw weapon (keep it in hand)",
+      "sheathe": "Sheathe weapon",
+      "reset": "Right-click — automatic (in hand while in combat)"
     }
   }
 }

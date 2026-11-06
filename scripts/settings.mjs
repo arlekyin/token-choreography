@@ -21,6 +21,10 @@ export function registerSettings() {
   reg("calm", { scope: "client", default: reducedMotion() });
   reg("noShake", { scope: "client", default: reducedMotion() });
   reg("footprints", { scope: "client", default: true });
+  // Кровь кому-то за столом неприятна: у каждого своя
+  reg("gore", { scope: "client", type: String, default: "full", choices: {
+    off: "TCHOREO.Settings.gore.off", low: "TCHOREO.Settings.gore.low", full: "TCHOREO.Settings.gore.full"
+  } });
 }
 
 /** Текущие настройки одним объектом: читаются каждый кадр, поэтому без лишних обращений к game.settings */
@@ -29,8 +33,10 @@ export const prefs = {
   calm: false,
   noShake: false,
   footprints: true,
+  /** Кровь: off — нет, low — меньше и без луж под павшими, full — полностью */
+  gore: "full",
   refresh() {
-    for (const key of ["enabled", "calm", "noShake", "footprints"]) this[key] = game.settings.get(MODULE_ID, key);
+    for (const key of ["enabled", "calm", "noShake", "footprints", "gore"]) this[key] = game.settings.get(MODULE_ID, key);
     // Спокойные эффекты сами по себе без тряски
     this.shake = !this.calm && !this.noShake;
   }

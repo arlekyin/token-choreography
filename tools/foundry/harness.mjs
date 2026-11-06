@@ -68,7 +68,7 @@ export async function connect({ width = 1400, height = 900 } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, ...(a.video ? { recordVideo: { dir: path.join(OUT, "video"), size: { width, height } } } : {}) });
   const page = await context.newPage();
   const log = [];
-  page.on("pageerror", e => { log.push(`pageerror: ${e.message} ${(e.stack ?? "").split("\n").slice(1, 3).join(" ← ")}`); });
+  page.on("pageerror", e => { log.push(`pageerror: ${e.message} ${(e.stack ?? "").split("\n").slice(1, 5).join(" ← ")}`); });
   page.on("console", m => { if (["error", "warning"].includes(m.type())) log.push(`${m.type()}: ${m.text()}`); });
   const login = async () => {
     await page.goto(`${URL}/join`);
@@ -82,6 +82,9 @@ export async function connect({ width = 1400, height = 900 } = {}) {
   };
   await login();
   console.log("вход выполнен");
+  // Ошибки страницы — со стеком (у части ошибок Playwright стек не отдаёт)
+  await page.addInitScript(() => window.addEventListener("error", e => console.error(`STACK ${e.error?.stack ?? e.message}`)));
+  await page.evaluate(() => window.addEventListener("error", e => console.error(`STACK ${e.error?.stack ?? e.message}`)));
   // Модуль включается в тестовом мире и мир перезагружается
   const on = await page.evaluate(() => game.modules.get("token-choreography")?.active);
   if (!on) {

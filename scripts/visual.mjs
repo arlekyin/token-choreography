@@ -11,6 +11,8 @@ import { clamp, spring, sp, FLY_ALT } from "./util.mjs";
 import { Motion } from "./motion/motion.mjs";
 import { LandLeg, TakeoffLeg } from "./motion/legs.mjs";
 import { SmoothPath } from "./motion/path.mjs";
+import { Overlay, Reactions } from "./attack/react.mjs";
+import { wounds } from "./gore/gore.mjs";
 
 export class TokenVisual {
   /** @param {Token} token */
@@ -35,6 +37,40 @@ export class TokenVisual {
     this.base = null;      // значения Foundry до искажений
     this.applied = false;
     this.shadow = null;
+    // Бой
+    this.shift = { x: 0, y: 0 }; // где токен в атаке относительно своего места, px макета (подход, отскок)
+    this.duck = 0;         // присел (0…1): меньше и темнее
+    this.low = 0;          // пригнулся, крадётся (0…1)
+    this.spin = 0;         // поворот токена вместе с оружием (раскрутка секирой), рад
+    this.hide = 0;         // почти не виден (стрелок в укрытии, призрак): 0…1
+    this.freeze = 0;       // стоп-кадр удара, с
+    this.act = null;       // идущая атака этого токена (он бьёт)
+    this.rig = null;       // оружие в руке (WeaponRig), пока идёт атака или защита
+    this.rig2 = null;      // второе оружие в левой руке (второй кинжал)
+    this.shield = null;    // щит (ShieldRig); без оружия он же и rig
+    this.view = null;      // где токен виден сейчас (центр меша без подскока), px макета: за ним идёт оружие
+    this.faceAt = 0;       // когда в последний раз выбирали, куда смотрит оружие в руках
+    this.react = new Reactions();
+    this.flash = null;     // Overlay: белый/красный
+    this.shade = null;     // Overlay: тень приседа
+  }
+
+  /** Центр токена на сцене в пикселях макета (без искажений) */
+  get home() {
+    const c = this.token.document.getCenterPoint(), u = this.u;
+    return { x: c.x / u, y: c.y / u };
+  }
+
+  /** Где токен виден, px макета: своё место, сдвиг атаки и толчки (как a.x.p + a.ox.p в макете) */
+  get at() {
+    const h = this.home;
+    return { x: h.x + this.shift.x + this.ox.p, y: h.y + this.shift.y + this.oy.p };
+  }
+
+  /** Атаке нужен мелкий шаг времени: жёсткие пружины оружия на 1/60 с разлетаются */
+  get fine() {
+    // Оружие в руках в покое (held) — мягкие пружины, обычного шага хватает
+    return !!(this.act || this.rig2 || this.react.busy || (this.rig && !this.rig.held) || (this.shield && !this.shield.held));
   }
 
   /** Размер существа в клетках: от размера токена, не от картинки */
@@ -48,6 +84,8 @@ export class TokenVisual {
   /** Есть ли что показывать: ход, пружины не успокоились, парит */
   get busy() {
     if (this.motion || this.hover || this.keepAloft || this.alt > 0.05 || this.hop > 0.05) return true;
+    if (this.act || this.rig || this.rig2 || this.shield || this.react.busy || this.freeze > 0 || this.duck > 1e-3 || this.low > 1e-3
+      || Math.abs(this.spin) > 1e-3 || this.hide > 1e-3 || Math.abs(this.shift.x) > 0.05 || Math.abs(this.shift.y) > 0.05) return true;
     const rest = s => Math.abs(s.v) < 1e-3;
     return Math.abs(this.sx.p - 1) > 1e-3 || Math.abs(this.sy.p - 1) > 1e-3 || Math.abs(this.lean.p) > 1e-3
       || Math.abs(this.ox.p) > 0.05 || Math.abs(this.oy.p) > 0.05 || !rest(this.sx) || !rest(this.sy)
@@ -57,8 +95,18 @@ export class TokenVisual {
 
   /** Шаг времени: ход, парение, пружины */
   update(dt, time) {
+    // Стоп-кадр удара: оба участника замирают на миг
+    if (this.freeze > 0) { this.freeze = Math.max(0, this.freeze - dt); return; }
+    if (this.act && this.act.update(dt) === false) this.act = null;
+    if (this.rig?.held || this.shield?.held) this.#holdFace(dt);
+    this.rig?.update(dt);
+    if (this.rig?.done) { if (this.shield === this.rig) this.shield = null; this.rig.destroy(); this.rig = null; }
+    if (this.shield && this.shield !== this.rig) { this.shield.update(dt); if (this.shield.done) { this.shield.destroy(); this.shield = null; } }
+    this.rig2?.update(dt);
+    if (this.rig2?.done) { this.rig2.destroy(); this.rig2 = null; }
+    const held = this.react.update(this, dt);
     // Состояние «Полёт» включили или сняли между ходами — взлёт или посадка на месте
-    if (!this.motion && this.token.document) {
+    if (!this.motion && !this.act && this.token.document) {
       if (this.hover && this.alt < FLY_ALT * 0.6) this.motion = this.#inPlace(TakeoffLeg);
       else if (!this.hover && !this.keepAloft && this.alt > 6) this.motion = this.#inPlace(LandLeg);
     }
@@ -79,8 +127,10 @@ export class TokenVisual {
     spring(this.sx, sq ? 1 + sq : 1, 500, 13, dt);
     spring(this.sy, sq ? 1 - sq * 0.8 : 1, 500, 13, dt);
     spring(this.lean, this.leanT, 300, 16, dt);
-    spring(this.ox, 0, 420, 20, dt);
-    spring(this.oy, 0, 420, 20, dt);
+    if (!held) {
+      spring(this.ox, 0, 420, 20, dt);
+      spring(this.oy, 0, 420, 20, dt);
+    }
   }
 
   /** Взлёт или посадка там, где токен стоит */
@@ -114,7 +164,7 @@ export class TokenVisual {
       x: m.position.x, y: m.position.y,
       sx: m.scale.x, sy: m.scale.y,
       rotation: m.rotation, skx: m.skew.x, sky: m.skew.y,
-      sort: m.sort,
+      sort: m.sort, alpha: m.alpha,
       tx: t.position.x, ty: t.position.y
     };
   }
@@ -128,10 +178,12 @@ export class TokenVisual {
       m.scale.set(b.sx, b.sy);
       m.rotation = b.rotation;
       m.skew.set(b.skx, b.sky);
+      m.alpha = b.alpha;
       if (m.sort !== b.sort) { m.sort = b.sort; canvas.primary.sortDirty = true; }
     }
     if (!t.destroyed) t.position.set(b.tx, b.ty);
     this.applied = false;
+    wounds.follow(t);
   }
 
   /** Наложить свои искажения на меш и контейнер токена */
@@ -141,7 +193,7 @@ export class TokenVisual {
     const u = this.u, z = this.z;
 
     // Сдвиг: свой путь относительно логического положения Foundry, проскальзывание, перенос веса
-    let dx = this.ox.p * u, dy = this.oy.p * u;
+    let dx = (this.ox.p + this.shift.x) * u, dy = (this.oy.p + this.shift.y) * u;
     if (this.path) {
       const c = t.document.getCenterPoint();
       dx += this.path.x - c.x;
@@ -153,17 +205,20 @@ export class TokenVisual {
 
     // Матрица искажения в осях сцены: крен → рост от высоты → наклон вдоль движения → сжатие
     const hz = (this.hop + this.alt) / (260 * Math.sqrt(z));
-    const k = 1 + hz;
-    let M = rotation(this.rot + this.bank);
+    // Присел или пригнулся — меньше (как heightScale в макете)
+    const k = 1 + hz - 0.252 * this.duck - 0.05 * this.low;
+    let M = rotation(this.rot + this.bank + this.spin);
     M = mul(M, [k, 0, 0, k]);
-    const ld = this.leanDir, l = this.lean.p;
-    M = mul(M, mul(rotation(ld), mul([1 + l, 0, 0, 1 - l * 0.5], rotation(-ld))));
+    const ld = this.leanDir, l = this.lean.p, ev = this.react.evSq;
+    M = mul(M, mul(rotation(ld), mul([(1 + l) * (1 - 0.12 * ev), 0, 0, (1 - l * 0.5) * (1 + 0.06 * ev)], rotation(-ld))));
     M = mul(M, [this.sx.p, 0, 0, this.sy.p]);
     // Свой поворот и масштаб Foundry: R(rotation) · skew · S(scale)
     const B = pixiMatrix(b.rotation, b.skx, b.sky, b.sx, b.sy);
     const F = mul(M, B);
     setFromMatrix(m, F);
     m.position.set(b.x + dx, b.y + dy);
+    this.view = { x: (b.x + dx) / u, y: (b.y + dy + this.hop * u * Math.sqrt(z)) / u };
+    m.alpha = b.alpha * (1 - 0.55 * this.hide);
     // Летящий — слоем выше стоящих на той же высоте
     const sort = this.aloft ? b.sort + 1e7 : b.sort;
     if (m.sort !== sort) { m.sort = sort; canvas.primary.sortDirty = true; }
@@ -171,6 +226,47 @@ export class TokenVisual {
     t.position.set(b.tx + dx, b.ty + dy);
     this.applied = true;
     this.#updateShadow(dx, dy);
+    this.#updateOverlays(m);
+    wounds.follow(t);
+    this.rig?.render();
+    this.rig2?.render();
+    if (this.shield && this.shield !== this.rig) this.shield.render();
+  }
+
+  /**
+   * Оружие в руках вне атаки смотрит на ближайшего соседа (сначала — на чужих), как в макете; раз в 0,3 с.
+   * Никого рядом нет — туда, куда смотрел
+   */
+  #holdFace(dt) {
+    this.faceAt -= dt;
+    if (this.faceAt > 0) return;
+    this.faceAt = 0.3;
+    const me = this.token, c = me.document.getCenterPoint(), disp = me.document.disposition, far = (canvas.dimensions?.size ?? 100) * 8;
+    let best = null, bestD = Infinity;
+    for (const o of canvas.tokens?.placeables ?? []) {
+      if (o === me || !o.visible || o.document.hidden) continue;
+      const p = o.document.getCenterPoint(), d = Math.hypot(p.x - c.x, p.y - c.y) * (o.document.disposition === disp ? 2 : 1);
+      if (d < bestD && d < far) { bestD = d; best = p; }
+    }
+    if (!best) return;
+    const f = Math.atan2(best.y - c.y, best.x - c.x);
+    for (const r of [this.rig, this.shield]) if (r?.held) r.faceLock = f;
+  }
+
+  /** Вспышки поверх меша: белым при ударе, красным — рана; тень, когда присел или пригнулся */
+  #updateOverlays(m) {
+    const r = this.react, seen = this.token.visible && m.visible;
+    const dark = Math.max(0.42 * this.duck, 0.3 * this.low);
+    if (seen && dark > 0.01) (this.shade ??= new Overlay(0x0a0e1e)).follow(m, dark, 0.2);
+    else this.shade?.hide();
+    // Сильнейший отлив: белая вспышка удара, краснота раны, яд/холод/оцепенение
+    const white = Math.min(1, r.white), red = r.red * 0.4, glow = r.glow();
+    let best = white > 0.01 && white >= red ? { color: 0xffffff, alpha: white } : red > 0.01 ? { color: 0xc01818, alpha: red } : null;
+    if (glow && (!best || glow.alpha > best.alpha)) best = glow;
+    if (seen && best) {
+      this.flash ??= new Overlay(0xffffff);
+      this.flash.setColor(best.color); this.flash.follow(m, best.alpha, 0.3);
+    } else this.flash?.hide();
   }
 
   /** Тень летящего и прыгающего: на земле, отходит по свету, бледнеет и сжимается с высотой */
@@ -200,11 +296,30 @@ export class TokenVisual {
     if (this.shadow && !this.shadow.destroyed) this.shadow.parent?.removeChild(this.shadow);
   }
 
+  /** Атака прервана (токен перерисован, сцена закрыта): всё боевое — сразу в покой */
+  cancelCombat() {
+    const act = this.act;
+    this.act = null;
+    act?.cancel();
+    this.rig?.destroy(); this.rig = null;
+    this.rig2?.destroy(); this.rig2 = null;
+    if (this.shield && !this.shield.gfx.destroyed) this.shield.destroy();
+    this.shield = null;
+    this.react.clear(this);
+    this.shift.x = this.shift.y = 0;
+    this.spin = 0; this.hide = 0;
+    this.freeze = 0;
+    this.flash?.hide(); this.shade?.hide();
+  }
+
   destroy() {
     this.restore();
     if (this.shadow && !this.shadow.destroyed) this.shadow.destroy();
     this.shadow = null;
     this.motion = null;
+    this.cancelCombat();
+    this.flash?.destroy(); this.shade?.destroy();
+    this.flash = this.shade = null;
   }
 }
 

@@ -5,9 +5,15 @@
   "version": "0.1.0",
   "authors": [
     {
-      "name": "arlekyin"
+      "name": "arlekyin",
+      "url": "https://github.com/arlekyin"
     }
   ],
+  "url": "https://github.com/arlekyin/token-choreography",
+  "manifest": "https://github.com/arlekyin/token-choreography/releases/latest/download/module.json",
+  "download": "https://github.com/arlekyin/token-choreography/releases/download/v0.1.0/token-choreography.zip",
+  "license": "https://github.com/arlekyin/token-choreography/blob/main/LICENSE",
+  "bugs": "https://github.com/arlekyin/token-choreography/issues",
   "compatibility": {
     "minimum": "13",
     "verified": "14"
